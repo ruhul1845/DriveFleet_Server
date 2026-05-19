@@ -198,24 +198,22 @@ function isValidId(id) {
 
 function verifyToken(req, res, next) {
   // TEMPORARILY COMMENTED OUT FOR TESTING PURPOSES
-  // const token = req.cookies?.drivefleet_token || (req.headers.authorization || '').replace('Bearer ', '');
-  // if (!token) return res.status(401).json({ success: false, message: 'Unauthorized access. Token missing.' });
+  const token = req.cookies?.drivefleet_token || (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return res.status(401).json({ success: false, message: 'Unauthorized access. Token missing.' });
 
-  // jwt.verify(token, jwtSecret, (error, decoded) => {
-  //   if (error) return res.status(403).json({ success: false, message: 'Forbidden access. Invalid token.' });
-  //   req.user = decoded;
-  //   next();
-  // });
+  jwt.verify(token, jwtSecret, (error, decoded) => {
+    if (error) return res.status(403).json({ success: false, message: 'Forbidden access. Invalid token.' });
+    req.user = decoded;
+    next();
+  });
 
   // Mock user for testing
   req.user = { email: req.body.userEmail || 'test@example.com', name: 'Test User' };
   next();
 }
 
-// ========================================
-// TEMPORARILY COMMENTED OUT FOR TESTING
-// ========================================
-/*
+
+
 app.post('/api/auth/jwt', (req, res) => {
   const { email, name, image, photo } = req.body;
   if (!email) return res.status(400).json({ success: false, message: 'Email is required to generate token.' });
@@ -230,10 +228,10 @@ app.post('/api/auth/jwt', (req, res) => {
     })
     .json({ success: true, message: 'JWT token created successfully.', token });
 });
-*/
 
-// TEMPORARILY COMMENTED OUT FOR TESTING
-/*
+
+
+
 app.post('/api/auth/logout', (req, res) => {
   res
     .clearCookie('drivefleet_token', {
@@ -243,7 +241,7 @@ app.post('/api/auth/logout', (req, res) => {
     })
     .json({ success: true, message: 'Logged out successfully.' });
 });
-*/
+
 
 app.post('/api/seed', async (req, res, next) => {
   try {
