@@ -8,17 +8,10 @@
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": [
-    "express",
-    "mongodb",
-    "jwt",
-    "drivefleet",
-    "car-rental"
-  ],
+  "keywords": ["express", "mongodb", "jwt", "drivefleet", "car-rental"],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "compression": "^1.7.4",
     "cookie-parser": "latest",
     "cors": "latest",
     "dotenv": "latest",

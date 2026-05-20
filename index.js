@@ -3,7 +3,6 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
-const compression = require('compression');
 require('dotenv').config();
 
 const app = express();
@@ -19,14 +18,7 @@ if (!mongoUri) {
   process.exit(1);
 }
 
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
-
 const client = new MongoClient(mongoUri, {
-  maxPoolSize: 10,
-  serverSelectionTimeoutMS: 8000,
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
@@ -34,122 +26,22 @@ const client = new MongoClient(mongoUri, {
   },
 });
 
+let db;
 let Cars;
 let Bookings;
-let dbReadyPromise = null;
-let indexesEnsured = false;
-
-const LIST_CACHE = 'public, s-maxage=30, stale-while-revalidate=120';
-
-/** Reuse one MongoDB connection per Vercel instance (avoids ~3–8s connect on every cold start). */
-async function connectDB() {
-  if (Cars && Bookings) return { Cars, Bookings };
-  if (!dbReadyPromise) {
-    dbReadyPromise = (async () => {
-      await client.connect();
-      const db = client.db(dbName);
-      Cars = db.collection(carsCollectionName);
-      Bookings = db.collection(bookingsCollectionName);
-      if (!indexesEnsured) {
-        indexesEnsured = true;
-        ensureIndexes().catch((err) => console.error('Index setup:', err.message));
-      }
-      return { Cars, Bookings };
-    })().catch((err) => {
-      dbReadyPromise = null;
-      throw err;
-    });
-  }
-  return dbReadyPromise;
-}
-
-async function ensureIndexes() {
-  await Cars.createIndexes([
-    { key: { createdAt: -1, _id: -1 } },
-    { key: { carType: 1 } },
-    { key: { ownerEmail: 1 } },
-    { key: { carName: 1 } },
-  ]);
-  await Bookings.createIndexes([{ key: { userEmail: 1, createdAt: -1 } }]);
-}
-
-async function dbMiddleware(req, res, next) {
-  try {
-    await connectDB();
-    next();
-  } catch (error) {
-    next(error);
-  }
-}
 
 app.use(
   cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(null, false);
-    },
+    origin: [process.env.CLIENT_URL || 'http://localhost:3000'],
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
-app.use(compression());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json());
 app.use(cookieParser());
 
-app.get('/', (req, res) => {
-  res.send('DriveFleet server is running.');
-});
 
-// Performance monitoring middleware
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    if (duration > 100) {
-      console.log(`[SLOW] ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
-    }
-  });
-  next();
-});
-
-app.get('/api/health', async (req, res) => {
-  try {
-    await connectDB();
-    res.json({ success: true, message: 'DriveFleet API is healthy.' });
-  } catch (error) {
-    res.status(503).json({ success: false, message: 'Database unavailable.', error: error.message });
-  }
-});
-
-app.use(dbMiddleware);
-
-const sampleCars = [
-  {
-    carName: 'Toyota Corolla Hybrid', dailyRentPrice: 65, carType: 'Sedan', imageUrl: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=1200&q=80', seatCapacity: 5, pickupLocation: 'Dhaka Airport', description: 'Fuel efficient sedan for city rides, office trips, and airport pickup.', availabilityStatus: 'Available', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  },
-  {
-    carName: 'Honda CR-V Touring', dailyRentPrice: 95, carType: 'SUV', imageUrl: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=1200&q=80', seatCapacity: 5, pickupLocation: 'Gulshan, Dhaka', description: 'Comfortable SUV with spacious luggage area for family and business travel.', availabilityStatus: 'Available', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  },
-  {
-    carName: 'BMW 5 Series Executive', dailyRentPrice: 180, carType: 'Luxury', imageUrl: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1200&q=80', seatCapacity: 5, pickupLocation: 'Banani, Dhaka', description: 'Premium luxury car for weddings, business meetings, and VIP travel.', availabilityStatus: 'Available', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  },
-  {
-    carName: 'Hyundai Tucson Smart', dailyRentPrice: 85, carType: 'SUV', imageUrl: 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&w=1200&q=80', seatCapacity: 5, pickupLocation: 'Uttara, Dhaka', description: 'Modern SUV with smooth handling and strong air conditioning.', availabilityStatus: 'Available', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  },
-  {
-    carName: 'Suzuki Swift City', dailyRentPrice: 45, carType: 'Hatchback', imageUrl: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80', seatCapacity: 4, pickupLocation: 'Mirpur, Dhaka', description: 'Affordable hatchback for students, short trips, and daily commute.', availabilityStatus: 'Available', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  },
-  {
-    carName: 'Mercedes-Benz C Class', dailyRentPrice: 170, carType: 'Luxury', imageUrl: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&w=1200&q=80', seatCapacity: 5, pickupLocation: 'Dhanmondi, Dhaka', description: 'Elegant luxury vehicle with premium comfort and professional look.', availabilityStatus: 'Unavailable', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  },
-  {
-    carName: 'Nissan X-Trail 2020', dailyRentPrice: 75, carType: 'SUV', imageUrl: 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&w=1200&q=80', seatCapacity: 7, pickupLocation: 'Banani, Dhaka', description: 'A spacious SUV perfect for family tours, highway journeys, and comfortable group travel.', availabilityStatus: 'Available', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  },
-  {
-    carName: 'Toyota Hiace 2019', dailyRentPrice: 95, carType: 'Microbus', imageUrl: 'https://images.unsplash.com/photo-1549927681-0b673b8243ab?auto=format&fit=crop&w=1200&q=80', seatCapacity: 12, pickupLocation: 'Mohakhali, Dhaka', description: 'Reliable microbus for group tours, office trips, airport pickup, and long-distance travel.', availabilityStatus: 'Available', booking_count: 0, ownerEmail: 'admin@drivefleet.com', ownerName: 'DriveFleet Admin'
-  }
-];
 
 function normalizeCar(car) {
   if (!car) return null;
@@ -197,7 +89,6 @@ function isValidId(id) {
 }
 
 function verifyToken(req, res, next) {
-  // TEMPORARILY COMMENTED OUT FOR TESTING PURPOSES
   const token = req.cookies?.drivefleet_token || (req.headers.authorization || '').replace('Bearer ', '');
   if (!token) return res.status(401).json({ success: false, message: 'Unauthorized access. Token missing.' });
 
@@ -206,13 +97,15 @@ function verifyToken(req, res, next) {
     req.user = decoded;
     next();
   });
-
-  // Mock user for testing
-  req.user = { email: req.body.userEmail || 'test@example.com', name: 'Test User' };
-  next();
 }
 
+app.get('/', (req, res) => {
+  res.send('DriveFleet server is running.');
+});
 
+app.get('/api/health', (req, res) => {
+  res.json({ success: true, message: 'DriveFleet API is healthy.' });
+});
 
 app.post('/api/auth/jwt', (req, res) => {
   const { email, name, image, photo } = req.body;
@@ -226,11 +119,8 @@ app.post('/api/auth/jwt', (req, res) => {
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     })
-    .json({ success: true, message: 'JWT token created successfully.', token });
+    .json({ success: true, message: 'JWT token created successfully.' });
 });
-
-
-
 
 app.post('/api/auth/logout', (req, res) => {
   res
@@ -241,7 +131,6 @@ app.post('/api/auth/logout', (req, res) => {
     })
     .json({ success: true, message: 'Logged out successfully.' });
 });
-
 
 app.post('/api/seed', async (req, res, next) => {
   try {
@@ -260,7 +149,7 @@ app.post('/api/seed', async (req, res, next) => {
 
 app.get('/api/cars', async (req, res, next) => {
   try {
-    const { search = '', type = '', limit = '12' } = req.query;
+    const { search = '', type = '', limit = '' } = req.query;
     const query = {};
     if (search) {
       query.$or = [
@@ -274,14 +163,11 @@ app.get('/api/cars', async (req, res, next) => {
       ];
     }
 
-    let cursor = Cars.find(query)
-      .project({ carName: 1, dailyRentPrice: 1, carType: 1, imageUrl: 1, seatCapacity: 1, pickupLocation: 1, availabilityStatus: 1, ownerEmail: 1, booking_count: 1, createdAt: 1, _id: 1 })
-      .sort({ createdAt: -1, _id: -1 });
-    const parsedLimit = Math.min(Number(limit) || 12, 100);
+    let cursor = Cars.find(query).sort({ createdAt: -1, _id: -1 });
+    const parsedLimit = Number(limit);
     if (parsedLimit > 0) cursor = cursor.limit(parsedLimit);
 
     const cars = (await cursor.toArray()).map(normalizeCar);
-    if (!search && !type) res.set('Cache-Control', LIST_CACHE);
     res.json({ success: true, cars, data: cars });
   } catch (error) {
     next(error);
@@ -290,12 +176,7 @@ app.get('/api/cars', async (req, res, next) => {
 
 app.get('/api/cars/featured', async (req, res, next) => {
   try {
-    const cars = (await Cars.find({})
-      .project({ carName: 1, dailyRentPrice: 1, carType: 1, imageUrl: 1, seatCapacity: 1, pickupLocation: 1, availabilityStatus: 1, ownerEmail: 1, booking_count: 1, createdAt: 1, _id: 1 })
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(6)
-      .toArray()).map(normalizeCar);
-    res.set('Cache-Control', LIST_CACHE);
+    const cars = (await Cars.find({}).sort({ createdAt: -1, _id: -1 }).limit(6).toArray()).map(normalizeCar);
     res.json({ success: true, cars, data: cars });
   } catch (error) {
     next(error);
@@ -471,16 +352,16 @@ app.use((error, req, res, next) => {
   res.status(500).json({ success: false, message: 'Internal server error.', error: error.message });
 });
 
-module.exports = app;
-
-if (!process.env.VERCEL) {
-  connectDB()
-    .then(() => {
-      console.log(`MongoDB connected: ${dbName}`);
-      app.listen(port, () => console.log(`DriveFleet server listening on port ${port}`));
-    })
-    .catch((error) => {
-      console.error('Failed to start server:', error.message);
-      process.exit(1);
-    });
+async function startServer() {
+  await client.connect();
+  db = client.db(dbName);
+  Cars = db.collection(carsCollectionName);
+  Bookings = db.collection(bookingsCollectionName);
+  console.log(`MongoDB connected: ${dbName}`);
+  app.listen(port, () => console.log(`DriveFleet server listening on port ${port}`));
 }
+
+startServer().catch((error) => {
+  console.error('Failed to start server:', error.message);
+  process.exit(1);
+});
