@@ -231,33 +231,80 @@ app.post('/api/cars', verifyToken, async (req, res, next) => {
 
 async function updateCarHandler(req, res, next) {
   try {
-    if (!isValidId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid car id.' });
-    const existing = await Cars.findOne({ _id: new ObjectId(req.params.id) });
-    if (!existing) return res.status(404).json({ success: false, message: 'Car not found.' });
-    if (existing.ownerEmail !== req.user.email) return res.status(403).json({ success: false, message: 'You can update only your own car.' });
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid car id.",
+      });
+    }
 
-    const mapped = carToDb({ ...existing, ...req.body }, req.user);
-    delete mapped.createdAt;
-    mapped.booking_count = existing.booking_count || 0;
+    const existing = await Cars.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: "Car not found.",
+      });
+    }
+
+    if (existing.ownerEmail !== req.user.email) {
+      return res.status(403).json({
+        success: false,
+        message: "You can update only your own car.",
+      });
+    }
+
+    const body = req.body || {};
+
     const update = {
-      carName: mapped.carName,
-      dailyRentPrice: mapped.dailyRentPrice,
-      carType: mapped.carType,
-      imageUrl: mapped.imageUrl,
-      seatCapacity: mapped.seatCapacity,
-      pickupLocation: mapped.pickupLocation,
-      description: mapped.description,
-      availabilityStatus: mapped.availabilityStatus,
+      carName: body.carName ?? body.name ?? existing.carName ?? existing.name ?? "",
+      dailyRentPrice: Number(
+        body.dailyRentPrice ?? body.price ?? existing.dailyRentPrice ?? existing.price ?? 0
+      ),
+      carType: body.carType ?? body.type ?? existing.carType ?? existing.type ?? "",
+      imageUrl: body.imageUrl ?? body.image ?? existing.imageUrl ?? existing.image ?? "",
+      seatCapacity: Number(
+        body.seatCapacity ?? body.seats ?? existing.seatCapacity ?? existing.seats ?? 0
+      ),
+      pickupLocation:
+        body.pickupLocation ??
+        body.location ??
+        existing.pickupLocation ??
+        existing.location ??
+        "",
+      description:
+        body.description ?? existing.description ?? "",
+      availabilityStatus:
+        body.availabilityStatus ??
+        existing.availabilityStatus ??
+        (body.available === false ? "Unavailable" : "Available"),
       updatedAt: new Date().toISOString(),
     };
-    const result = await Cars.updateOne({ _id: new ObjectId(req.params.id) }, { $set: update });
-    res.json({ success: true, message: 'Car updated successfully.', modifiedCount: result.modifiedCount });
+
+    const result = await Cars.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: update }
+    );
+
+    const updatedCar = await Cars.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    res.json({
+      success: true,
+      message: "Car updated successfully.",
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+      car: normalizeCar(updatedCar),
+    });
   } catch (error) {
     next(error);
   }
 }
 
-app.put('/api/cars/:id', verifyToken, updateCarHandler);
+
 app.patch('/api/cars/:id', verifyToken, updateCarHandler);
 
 app.delete('/api/cars/:id', verifyToken, async (req, res, next) => {
