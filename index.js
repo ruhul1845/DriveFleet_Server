@@ -107,29 +107,56 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'DriveFleet API is healthy.' });
 });
 
-app.post('/api/auth/jwt', (req, res) => {
+app.post("/api/auth/jwt", (req, res) => {
   const { email, name, image, photo } = req.body;
-  if (!email) return res.status(400).json({ success: false, message: 'Email is required to generate token.' });
 
-  const token = jwt.sign({ email, name: name || '', image: image || photo || '' }, jwtSecret, { expiresIn: '7d' });
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required to generate token.",
+    });
+  }
+
+  const token = jwt.sign(
+    {
+      email,
+      name: name || "",
+      image: image || photo || "",
+    },
+    jwtSecret,
+    { expiresIn: "7d" }
+  );
+
+  const isProduction = process.env.NODE_ENV === "production";
+
   res
-    .cookie('drivefleet_token', token, {
+    .cookie("drivefleet_token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
     })
-    .json({ success: true, message: 'JWT token created successfully.' });
+    .json({
+      success: true,
+      message: "JWT token created successfully.",
+    });
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.post("/api/auth/logout", (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
+
   res
-    .clearCookie('drivefleet_token', {
+    .clearCookie("drivefleet_token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      path: "/",
     })
-    .json({ success: true, message: 'Logged out successfully.' });
+    .json({
+      success: true,
+      message: "Logged out successfully.",
+    });
 });
 
 app.post('/api/seed', async (req, res, next) => {
